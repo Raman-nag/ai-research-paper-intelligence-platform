@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+sentence-transformers
+faiss-cpu
+numpy
+python-multipart
+PyPDF2
+networkx
+scikit-learn
+flask
+flask-cors
+gunicorn
