@@ -20,7 +20,44 @@ from sentence_transformers import SentenceTransformer
 # =========================================
 
 app = FastAPI()
+embedding_model = None
+nlp = None
+index = None
 
+
+def load_models():
+
+    global embedding_model
+    global nlp
+    global index
+
+    if embedding_model is None:
+
+        print("Loading embedding model...")
+
+        embedding_model = SentenceTransformer(
+            "sentence-transformers/all-MiniLM-L6-v2"
+        )
+
+        print("Embedding model loaded.")
+
+    if nlp is None:
+
+        print("Loading spacy model...")
+
+        nlp = spacy.load("en_core_web_sm")
+
+        print("Spacy loaded.")
+
+    if index is None:
+
+        print("Loading FAISS index...")
+
+        index = faiss.read_index(
+            "vector_store/semantic_faiss.index"
+        )
+
+        print("FAISS loaded.")
 # =========================================
 # CORS
 # =========================================
@@ -39,10 +76,11 @@ app.add_middleware(
 
 print("\nLoading embedding model...")
 
-embedding_model = SentenceTransformer(
-    "sentence-transformers/all-MiniLM-L6-v2"
-)
-nlp = spacy.load("en_core_web_sm")
+#embedding_model = SentenceTransformer(
+   # "sentence-transformers/all-MiniLM-L6-v2"
+
+#)
+#nlp = spacy.load("en_core_web_sm")
 print("Embedding model loaded.")
 
 # =========================================
@@ -53,7 +91,7 @@ FAISS_PATH = "vector_store/semantic_faiss.index"
 
 print("\nLoading FAISS index...")
 
-index = faiss.read_index(FAISS_PATH)
+#index = faiss.read_index(FAISS_PATH)
 
 print("FAISS loaded.")
 print("Total vectors:", index.ntotal)
@@ -466,7 +504,7 @@ def stats():
 def semantic_search(query: str):
 
     try:
-
+        load_models()
         global latest_uploaded_chunks
 
         # =====================================
@@ -647,7 +685,7 @@ def semantic_search(query: str):
 def ask_ai(question: str):
 
     try:
-
+        load_models()
         global latest_uploaded_chunks
 
         # =====================================
@@ -837,7 +875,7 @@ async def upload_paper(
 ):
 
     try:
-
+        load_models()
         # Create uploads folder
 
         UPLOAD_DIR = "uploads"
@@ -1043,7 +1081,7 @@ async def analyze_paper(
 ):
 
     try:
-
+        load_models()
         # =====================================
         # CREATE UPLOAD DIRECTORY
         # =====================================
@@ -1269,7 +1307,6 @@ async def analyze_paper(
         }
 
 @app.get("/knowledge-graph")
-
 def get_knowledge_graph():
-
+    load_models()
     return LATEST_GRAPH
