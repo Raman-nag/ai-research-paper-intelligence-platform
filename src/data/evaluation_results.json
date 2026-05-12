@@ -1,0 +1,13 @@
+{
+    "rouge_scores": {
+        "rouge1": 0.3478,
+        "rouge2": 0.1905,
+        "rougeL": 0.3478
+    },
+    "semantic_retrieval": {
+        "relevant_similarity": 0.5326,
+        "irrelevant_similarity": 0.1121
+    },
+    "qa_pipeline_status": "working",
+    "knowledge_graph_status": "working"
+}

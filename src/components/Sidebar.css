@@ -1,0 +1,119 @@
+.cyberpunk-sidebar {
+  width: 280px;
+  height: 100vh;
+  background: var(--bg-sidebar);
+  border-right: var(--glass-border);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  left: 0;
+  top: 0;
+  backdrop-filter: blur(10px);
+  z-index: 100;
+}
+
+.sidebar-logo {
+  padding: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  border-bottom: var(--glass-border);
+}
+
+.sidebar-logo h1 {
+  font-size: 1.5rem;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.logo-icon {
+  filter: drop-shadow(0 0 8px var(--neon-cyan));
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 2rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 8px;
+  color: var(--text-muted);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.nav-text {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 1px;
+  z-index: 1;
+}
+
+.nav-glow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 4px;
+  background: var(--neon-cyan);
+  box-shadow: var(--border-glow);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.nav-item:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-item.active {
+  color: var(--neon-cyan);
+  background: rgba(0, 243, 255, 0.05);
+}
+
+.nav-item.active .nav-icon {
+  filter: drop-shadow(0 0 5px var(--neon-cyan));
+}
+
+.nav-item.active .nav-glow {
+  opacity: 1;
+}
+
+.sidebar-footer {
+  padding: 1.5rem 2rem;
+  border-top: var(--glass-border);
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 0.9rem;
+  color: var(--neon-cyan);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--neon-cyan);
+  box-shadow: 0 0 8px var(--neon-cyan);
+  animation: pulseGlow 2s infinite;
+}

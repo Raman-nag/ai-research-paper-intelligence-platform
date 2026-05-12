@@ -1,0 +1,103 @@
+{
+    "nodes": [
+        [
+            "Transformer",
+            {
+                "entity_type": "MODEL",
+                "label": "Transformer"
+            }
+        ],
+        [
+            "BERT",
+            {
+                "entity_type": "MODEL",
+                "label": "BERT"
+            }
+        ],
+        [
+            "GPT",
+            {
+                "entity_type": "MODEL",
+                "label": "GPT"
+            }
+        ],
+        [
+            "Self-Attention",
+            {
+                "entity_type": "METHOD",
+                "label": "Self-Attention"
+            }
+        ],
+        [
+            "NLP",
+            {
+                "entity_type": "DOMAIN",
+                "label": "NLP"
+            }
+        ],
+        [
+            "ArXiv",
+            {
+                "entity_type": "DATASET",
+                "label": "ArXiv"
+            }
+        ],
+        [
+            "Retrieval Augmented Generation",
+            {
+                "entity_type": "METHOD",
+                "label": "Retrieval Augmented Generation"
+            }
+        ]
+    ],
+    "edges": [
+        [
+            "Transformer",
+            "Self-Attention",
+            {
+                "relation": "USES",
+                "id": "0"
+            }
+        ],
+        [
+            "Transformer",
+            "BERT",
+            {
+                "relation": "BASED_ON",
+                "id": "1"
+            }
+        ],
+        [
+            "Transformer",
+            "GPT",
+            {
+                "relation": "BASED_ON",
+                "id": "2"
+            }
+        ],
+        [
+            "Transformer",
+            "NLP",
+            {
+                "relation": "APPLIED_IN",
+                "id": "3"
+            }
+        ],
+        [
+            "BERT",
+            "ArXiv",
+            {
+                "relation": "TRAINED_ON",
+                "id": "4"
+            }
+        ],
+        [
+            "GPT",
+            "Retrieval Augmented Generation",
+            {
+                "relation": "USES",
+                "id": "5"
+            }
+        ]
+    ]
+}
