@@ -28,7 +28,7 @@ const HomePage = () => {
 
     useEffect(() => {
 
-        fetch("http://127.0.0.1:8000/stats")
+        fetch("https://ai-research-paper-intelligence-platform.onrender.com/stats")
             .then((res) => res.json())
             .then((data) => {
                 setStats(data);

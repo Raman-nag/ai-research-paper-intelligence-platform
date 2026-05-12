@@ -6,7 +6,7 @@ import {
 import "./PaperAnalysisPage.css";
 
 const API_BASE =
-    "http://127.0.0.1:8000";
+    "https://ai-research-paper-intelligence-platform.onrender.com";
 
 export default function PaperAnalysisPage() {
 

@@ -161,7 +161,7 @@ const ResearchAssistantPage = () => {
 
       const response = await fetch(
 
-        `http://127.0.0.1:8000/ask?question=${encodeURIComponent(question)}`
+        `https://ai-research-paper-intelligence-platform.onrender.com/ask?question=${encodeURIComponent(question)}`
 
       );
 

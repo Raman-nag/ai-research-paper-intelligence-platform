@@ -65,7 +65,7 @@ const SemanticSearchPage = () => {
 
       const response = await fetch(
 
-        `http://127.0.0.1:8000/search?query=${encodeURIComponent(query)}`
+        `https://ai-research-paper-intelligence-platform.onrender.com/search?query=${encodeURIComponent(query)}`
 
       );
 
