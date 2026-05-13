@@ -1,35 +1,41 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import UploadFile, File
-from collections import Counter
-from sklearn.metrics.pairwise import cosine_similarity
-latest_uploaded_chunks = []
+
 import fitz
 import os
 import uuid
 import json
 import spacy
-from collections import Counter
 import faiss
 import numpy as np
 
+from collections import Counter
+from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 
 # =========================================
 # FASTAPI
 # =========================================
 
+
 app = FastAPI()
+
+latest_uploaded_chunks = []
+
 embedding_model = None
 nlp = None
 index = None
-
+metadata = []
 
 def load_models():
 
     global embedding_model
     global nlp
     global index
+    global metadata
+
+    # Load embedding model
 
     if embedding_model is None:
 
@@ -41,13 +47,17 @@ def load_models():
 
         print("Embedding model loaded.")
 
+    # Load spacy
+
     if nlp is None:
 
-        print("Loading spacy model...")
+        print("Loading spaCy model...")
 
         nlp = spacy.load("en_core_web_sm")
 
-        print("Spacy loaded.")
+        print("spaCy loaded.")
+
+    # Load FAISS
 
     if index is None:
 
@@ -58,10 +68,28 @@ def load_models():
         )
 
         print("FAISS loaded.")
+        print("Total vectors:", index.ntotal)
+
+    # Load metadata
+
+    if len(metadata) == 0:
+
+        print("Loading metadata...")
+
+        with open(
+            "vector_store/semantic_chunks.json",
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            metadata = json.load(f)
+
+        print("Metadata loaded.")
+        print("Metadata size:", len(metadata))
+
 # =========================================
 # CORS
 # =========================================
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -69,12 +97,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+'''
 # =========================================
 # LOAD EMBEDDING MODEL
 # =========================================
 
-print("\nLoading embedding model...")
+#print("\nLoading embedding model...")
 
 #embedding_model = SentenceTransformer(
    # "sentence-transformers/all-MiniLM-L6-v2"
@@ -109,7 +137,9 @@ with open(METADATA_PATH, "r", encoding="utf-8") as f:
     metadata = json.load(f)
 
 print("Metadata loaded.")
-print("Metadata size:", len(metadata))
+print("Metadata size:", len(metadata))'''
+
+
 LATEST_GRAPH = {
     "nodes": [],
     "edges": []
