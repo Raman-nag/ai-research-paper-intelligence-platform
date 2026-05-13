@@ -35,57 +35,87 @@ def load_models():
     global index
     global metadata
 
-    # Load embedding model
+    try:
 
-    if embedding_model is None:
+        # EMBEDDING MODEL
+        if embedding_model is None:
 
-        print("Loading embedding model...")
+            print("Loading embedding model...")
 
-        embedding_model = SentenceTransformer(
-            "sentence-transformers/all-MiniLM-L6-v2"
-        )
+            embedding_model = SentenceTransformer(
+                "sentence-transformers/all-MiniLM-L6-v2"
+            )
 
-        print("Embedding model loaded.")
+            print("Embedding model loaded.")
 
-    # Load spacy
+        # SPACY
+        if nlp is None:
 
-    if nlp is None:
+            print("Loading spacy model...")
 
-        print("Loading spaCy model...")
+            try:
+                nlp = spacy.load("en_core_web_sm")
 
-        nlp = spacy.load("en_core_web_sm")
+            except:
 
-        print("spaCy loaded.")
+                print("Downloading spacy model...")
 
-    # Load FAISS
+                os.system(
+                    "python -m spacy download en_core_web_sm"
+                )
 
-    if index is None:
+                nlp = spacy.load("en_core_web_sm")
 
-        print("Loading FAISS index...")
+            print("Spacy loaded.")
 
-        index = faiss.read_index(
-            "vector_store/semantic_faiss.index"
-        )
+        # FAISS
+        if index is None:
 
-        print("FAISS loaded.")
-        print("Total vectors:", index.ntotal)
+            print("Loading FAISS index...")
 
-    # Load metadata
+            if os.path.exists(
+                "vector_store/semantic_faiss.index"
+            ):
 
-    if len(metadata) == 0:
+                index = faiss.read_index(
+                    "vector_store/semantic_faiss.index"
+                )
 
-        print("Loading metadata...")
+                print("FAISS loaded.")
 
-        with open(
-            "vector_store/semantic_chunks.json",
-            "r",
-            encoding="utf-8"
-        ) as f:
+            else:
 
-            metadata = json.load(f)
+                print("FAISS file missing.")
 
-        print("Metadata loaded.")
-        print("Metadata size:", len(metadata))
+                index = faiss.IndexFlatL2(384)
+
+        # METADATA
+        if len(metadata) == 0:
+
+            if os.path.exists(
+                "vector_store/semantic_chunks.json"
+            ):
+
+                with open(
+                    "vector_store/semantic_chunks.json",
+                    "r",
+                    encoding="utf-8"
+                ) as f:
+
+                    metadata = json.load(f)
+
+                print("Metadata loaded.")
+
+            else:
+
+                print("Metadata missing.")
+
+                metadata = []
+
+    except Exception as e:
+
+        print("MODEL LOADING ERROR:")
+        print(str(e))
 
 # =========================================
 # CORS
@@ -1340,3 +1370,8 @@ async def analyze_paper(
 def get_knowledge_graph():
     load_models()
     return LATEST_GRAPH
+
+@app.on_event("startup")
+async def startup_event():
+
+    print("FastAPI server starting...")
