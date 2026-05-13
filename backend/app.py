@@ -518,15 +518,18 @@ def safe_chunk_fetch(idx):
 # =========================================
 
 @app.get("/")
-
 def root():
 
     return {
 
         "message": "Production ArXiv Research Backend Running",
         "status": "success",
-        "vectors": index.ntotal
 
+        "faiss_loaded": index is not None,
+
+        "vectors": index.ntotal if index is not None else 0,
+
+        "metadata_loaded": len(metadata) if metadata else 0
     }
 
 # =========================================
