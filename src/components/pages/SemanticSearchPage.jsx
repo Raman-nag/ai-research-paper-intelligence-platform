@@ -35,12 +35,12 @@ const SemanticSearchPage = () => {
 
     try {
       const response = await fetch(
-        `https://ai-research-paper-intelligence-platform.onrender.com/search?query=${encodeURIComponent(query)}`
+        `http://127.0.0.1:8000/search?query=${encodeURIComponent(query)}`
       );
       const data = await response.json();
 
       const sortedResults = (data.results || []).sort(
-        (a, b) => b.similarity_score - a.similarity_score
+        (a, b) => a.similarity_score - b.similarity_score
       );
 
       setUploadedResults(data.uploaded_pdf_matches || []);

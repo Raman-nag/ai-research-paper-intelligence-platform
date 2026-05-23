@@ -72,7 +72,7 @@ const ResearchAssistantPage = () => {
   const askBackendAI = async (question) => {
     try {
       const response = await fetch(
-        `https://ai-research-paper-intelligence-platform.onrender.com/ask?question=${encodeURIComponent(question)}`
+        `http://127.0.0.1:8000/ask?question=${encodeURIComponent(question)}`
       );
       const data = await response.json();
       return {

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Filter, Layers, Maximize, ZoomIn, ZoomOut, Share2, Network } from 'lucide-react';
+import { Filter, Layers, Maximize, ZoomIn, ZoomOut, Share2, Network, RefreshCcw } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -17,30 +17,132 @@ const itemVariants = {
 
 const KnowledgeGraphPage = () => {
   const canvasRef = useRef(null);
+
+  const animationRef = useRef(null);
+
   const visualNodesRef = useRef([]);
+
+  const mouseRef = useRef({
+    x: 0,
+    y: 0
+  });
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
   const [graphStats, setGraphStats] = useState({ nodes: 0, edges: 0, selectedEntity: null });
 
-  useEffect(() => {
-    const storedAnalysis = sessionStorage.getItem("current_analysis");
+  const loadGraphData = () => {
+
+    const storedAnalysis =
+      sessionStorage.getItem("current_analysis");
+
+    // EMPTY STATE
+
     if (!storedAnalysis) {
-      setGraphData({ nodes: [], links: [] });
+
+      setGraphData({
+        nodes: [],
+        links: []
+      });
+
+      setGraphStats({
+        nodes: 0,
+        edges: 0,
+        selectedEntity: null
+      });
+
+      visualNodesRef.current = [];
+
       return;
     }
 
-    const parsedAnalysis = JSON.parse(storedAnalysis);
-    const graph = parsedAnalysis.knowledge_graph || {};
+    try {
 
-    if (graph.edges && !graph.links) {
-      graph.links = graph.edges;
+      const parsedAnalysis =
+        JSON.parse(storedAnalysis);
+
+      const graph =
+        parsedAnalysis.knowledge_graph || {};
+
+      // EDGE FIX
+
+      if (
+        graph.edges &&
+        !graph.links
+      ) {
+
+        graph.links = graph.edges;
+      }
+
+      const nodes =
+        graph.nodes || [];
+
+      const links =
+        graph.links || [];
+
+      setGraphData({
+        nodes,
+        links
+      });
+
+      setGraphStats({
+        nodes: nodes.length,
+        edges: links.length,
+        selectedEntity: nodes[0] || null
+      });
+
+      // CREATE VISUAL NODES
+
+      visualNodesRef.current = nodes.map(
+        (node, index) => ({
+          ...node,
+
+          x:
+            Math.random() * 700 + 100,
+
+          y:
+            Math.random() * 450 + 80,
+
+          vx:
+            (Math.random() - 0.5) * 1.4,
+
+          vy:
+            (Math.random() - 0.5) * 1.4,
+
+          radius:
+            10 + Math.random() * 8,
+
+          pulse:
+            Math.random() * Math.PI * 2,
+
+          color:
+            index % 2 === 0
+              ? "#00f3ff"
+              : "#9d00ff"
+        })
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Graph load error:",
+        error
+      );
     }
+  };
 
-    setGraphData({ nodes: graph.nodes || [], links: graph.links || [] });
-    setGraphStats({
-      nodes: graph.nodes?.length || 0,
-      edges: graph.links?.length || 0,
-      selectedEntity: graph.nodes?.[0] || null
-    });
+  useEffect(() => {
+
+    loadGraphData();
+
+    // AUTO REFRESH GRAPH
+
+    const interval = setInterval(() => {
+
+      loadGraphData();
+
+    }, 1500);
+
+    return () => clearInterval(interval);
+
   }, []);
 
   useEffect(() => {

@@ -1,58 +1,78 @@
-import React, { useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { Sphere, MeshDistortMaterial, Float } from '@react-three/drei';
+import React, { Suspense, useRef } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { OrbitControls, Float, Environment, useGLTF } from "@react-three/drei";
+import * as THREE from "three";
 
-const AnimatedShape = () => {
-  const sphereRef = useRef();
+function RobotModel() {
+  const robotRef = useRef();
 
-  useFrame(({ clock }) => {
-    const t = clock.getElapsedTime();
-    if (sphereRef.current) {
-      sphereRef.current.rotation.y = t * 0.2;
-      sphereRef.current.rotation.x = t * 0.1;
+  const { scene } = useGLTF("/models/ai_robot.glb");
+
+  useFrame(({ mouse }) => {
+    if (robotRef.current) {
+      robotRef.current.rotation.y =
+        THREE.MathUtils.lerp(
+          robotRef.current.rotation.y,
+          mouse.x * 0.8,
+          0.05
+        );
+
+      robotRef.current.rotation.x =
+        THREE.MathUtils.lerp(
+          robotRef.current.rotation.x,
+          -mouse.y * 0.3,
+          0.05
+        );
     }
   });
 
   return (
-    <Float speed={2} rotationIntensity={1} floatIntensity={2}>
-      <mesh ref={sphereRef}>
-        <icosahedronGeometry args={[2, 4]} />
-        <MeshDistortMaterial 
-          color="#9d00ff" 
-          attach="material" 
-          distort={0.4} 
-          speed={2} 
-          roughness={0.2} 
-          metalness={0.8}
-          wireframe={true}
-        />
-      </mesh>
-      
-      {/* Inner glowing core */}
-      <mesh>
-        <sphereGeometry args={[1.2, 32, 32]} />
-        <meshStandardMaterial 
-          color="#00f3ff" 
-          emissive="#00f3ff"
-          emissiveIntensity={2}
-          transparent={true}
-          opacity={0.8}
-        />
-      </mesh>
+    <Float speed={2} rotationIntensity={0.5} floatIntensity={1.5}>
+      <primitive
+        ref={robotRef}
+        object={scene}
+        scale={4.5}
+        position={[0, -3.2, 0]}
+      />
     </Float>
   );
-};
+}
 
-const Hero3D = () => {
+export default function Hero3D() {
   return (
-    <div style={{ width: '100%', height: '400px', position: 'relative' }}>
-      <Canvas camera={{ position: [0, 0, 5], fov: 45 }}>
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[10, 10, 10]} intensity={1} />
-        <AnimatedShape />
+    <div
+      style={{
+        width: "100%",
+        height: "650px",
+      }}
+    >
+      <Canvas camera={{ position: [0, 0, 6], fov: 45 }}>
+        <ambientLight intensity={1.5} />
+
+        <directionalLight
+          position={[5, 5, 5]}
+          intensity={3}
+          color="#00f3ff"
+        />
+
+        <pointLight
+          position={[-5, 2, 5]}
+          intensity={2}
+          color="#9d4edd"
+        />
+
+        <Suspense fallback={null}>
+          <Environment preset="city" />
+          <RobotModel />
+        </Suspense>
+
+        <OrbitControls
+          enableZoom={false}
+          enablePan={false}
+          autoRotate
+          autoRotateSpeed={1}
+        />
       </Canvas>
     </div>
   );
-};
-
-export default Hero3D;
+}

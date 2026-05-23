@@ -9,7 +9,10 @@ import {
 import Card from "../ui/Card";
 import Button from "../ui/Button";
 import Hero3D from "../ui/Hero3D";
-
+import WorkflowImage from "../../assets/Arxiv_workflow.png";
+import ArchitectureImage from "../../assets/Arxiv_system_arch.png";
+import KnowledgeGraphImage from "../../assets/Arxiv_knowledge_graph.png";
+import { useNavigate } from "react-router-dom";
 import "./HomePage.css";
 
 const containerVariants = {
@@ -33,7 +36,7 @@ const HomePage = () => {
     const [stats, setStats] = useState(null);
 
     useEffect(() => {
-        fetch("https://ai-research-paper-intelligence-platform.onrender.com/stats")
+        fetch("http://127.0.0.1:8000/stats")
             .then((res) => res.json())
             .then((data) => setStats(data))
             .catch((err) => console.error(err));
@@ -45,7 +48,18 @@ const HomePage = () => {
         { label: "Vector Dimensions", value: stats ? stats.vector_dimensions : "384" },
         { label: "Knowledge Relations", value: stats ? stats.graph_relations || 1842 : "1,842" }
     ];
+    const navigate = useNavigate();
 
+    const scrollToSection = (id) => {
+    const section = document.getElementById(id);
+
+    if (section) {
+        section.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+        });
+    }
+    };
     const features = [
         { icon: <Brain size={28} />, title: "Semantic AI Retrieval", description: "Uses transformer embeddings and semantic similarity instead of traditional keyword matching." },
         { icon: <Network size={28} />, title: "Dynamic Knowledge Graph", description: "Automatically generates connected scientific concepts and semantic relationships." },
@@ -79,8 +93,44 @@ const HomePage = () => {
                         AI-powered research intelligence platform using NLP, semantic retrieval, transformer embeddings, vector databases, knowledge graphs, and AI-assisted reasoning to understand scientific papers contextually.
                     </p>
                     <div className="hero-actions">
-                        <Button variant="primary" icon={<Zap size={18} />}>Launch AI Pipeline</Button>
-                        <Button variant="ghost" icon={<ArrowRight size={18} />}>Explore Features</Button>
+
+                    <Button
+                        variant="primary"
+                        icon={<Zap size={18} />}
+                        onClick={() => navigate("/paper-analysis")}
+                    >
+                        Launch AI Pipeline
+                    </Button>
+
+                    <Button
+                        variant="ghost"
+                        icon={<ArrowRight size={18} />}
+                        onClick={() => scrollToSection("system-architecture")}
+                    >
+                        System Architecture
+                    </Button>
+
+                    <Button
+                        variant="ghost"
+                        onClick={() => scrollToSection("workflow-section")}
+                    >
+                        Workflow
+                    </Button>
+
+                    <Button
+                        variant="ghost"
+                        onClick={() => scrollToSection("knowledge-graph-section")}
+                    >
+                        Knowledge Graph
+                    </Button>
+
+                    <Button
+                        variant="ghost"
+                        onClick={() => scrollToSection("features-section")}
+                    >
+                        AI Features
+                    </Button>
+
                     </div>
                     <div className="hero-mini-stats">
                         <div className="mini-stat"><Cpu size={18} /><span>Transformer Embeddings</span></div>
@@ -128,24 +178,102 @@ const HomePage = () => {
                 </div>
             </motion.section>
 
-            {/* WORKFLOW */}
-            <motion.section className="workflow-section" variants={containerVariants}>
-                <motion.div className="section-header" variants={itemVariants}>
-                    <h2>AI Processing Workflow</h2>
-                    <p>End-to-end intelligent semantic research pipeline.</p>
+            {/* SYSTEM ARCHITECTURE */}
+            <motion.section
+                className="visual-section"
+                id="system-architecture"
+                variants={containerVariants}
+            >
+                <motion.div
+                    className="section-header"
+                    variants={itemVariants}
+                >
+                    <h2>AI Research System Architecture</h2>
+
+                    <p>
+                        Complete end-to-end architecture of the AI-powered
+                        semantic research intelligence platform using NLP,
+                        transformer embeddings, FAISS vector search,
+                        semantic retrieval, and dynamic knowledge graphs.
+                    </p>
                 </motion.div>
-                <div className="workflow-grid">
-                    {workflow.map((step, index) => (
-                        <motion.div className="workflow-card" key={index} variants={itemVariants}>
-                            <div className="workflow-number">{index + 1}</div>
-                            <p>{step}</p>
-                        </motion.div>
-                    ))}
-                </div>
+
+                <motion.div
+                    className="visual-card"
+                    variants={itemVariants}
+                >
+                    <img
+                        src={ArchitectureImage}
+                        alt="System Architecture"
+                        className="visual-image"
+                    />
+                </motion.div>
+            </motion.section>
+
+            {/* AI WORKFLOW */}
+            <motion.section
+                className="visual-section"
+                id="workflow-section"
+                variants={containerVariants}
+            >
+                <motion.div
+                    className="section-header"
+                    variants={itemVariants}
+                >
+                    <h2>Complete AI Processing Workflow</h2>
+
+                    <p>
+                        Visual representation of the complete intelligent
+                        research paper analysis pipeline from PDF upload
+                        to semantic intelligence generation.
+                    </p>
+                </motion.div>
+
+                <motion.div
+                    className="visual-card"
+                    variants={itemVariants}
+                >
+                    <img
+                        src={WorkflowImage}
+                        alt="Workflow"
+                        className="visual-image"
+                    />
+                </motion.div>
+            </motion.section>
+
+            {/* KNOWLEDGE GRAPH */}
+            <motion.section
+                className="visual-section"
+                id="knowledge-graph-section"
+                variants={containerVariants}
+            >
+                <motion.div
+                    className="section-header"
+                    variants={itemVariants}
+                >
+                    <h2>Dynamic Knowledge Graph Generation</h2>
+
+                    <p>
+                        AI automatically extracts scientific concepts,
+                        entities, and semantic relationships to generate
+                        an intelligent interactive knowledge graph.
+                    </p>
+                </motion.div>
+
+                <motion.div
+                    className="visual-card"
+                    variants={itemVariants}
+                >
+                    <img
+                        src={KnowledgeGraphImage}
+                        alt="Knowledge Graph"
+                        className="visual-image"
+                    />
+                </motion.div>
             </motion.section>
 
             {/* FEATURES */}
-            <motion.section className="features-section" variants={containerVariants}>
+            <motion.section className="features-section" id="features-section" variants={containerVariants}>
                 <motion.div className="section-header" variants={itemVariants}>
                     <h2>Core AI Features</h2>
                     <p>Enterprise-grade semantic research intelligence system.</p>

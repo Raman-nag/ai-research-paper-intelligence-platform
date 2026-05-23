@@ -1,7 +1,8 @@
+from torch import chunk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import UploadFile, File
-
+import re
 import fitz
 import os
 import uuid
@@ -20,7 +21,13 @@ from sentence_transformers import SentenceTransformer
 
 
 app = FastAPI()
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 latest_uploaded_chunks = []
 
 embedding_model = None
@@ -174,24 +181,28 @@ LATEST_GRAPH = {
     "nodes": [],
     "edges": []
 }
+
+# =========================================
+# IMPORTS
+# =========================================
+
+import re
+
+
 # =========================================
 # CREATE SEMANTIC CHUNKS
 # =========================================
 
-def create_chunks(
-    text,
-    chunk_size=700
-):
+def create_chunks(text, chunk_size=700):
+
+    # clean before chunking
+    text = re.sub(r'\s+', ' ', text).strip()
 
     words = text.split()
 
     chunks = []
 
-    for i in range(
-        0,
-        len(words),
-        chunk_size
-    ):
+    for i in range(0, len(words), chunk_size):
 
         chunk = " ".join(
             words[i:i + chunk_size]
@@ -203,157 +214,601 @@ def create_chunks(
 
     return chunks
 
-# Extract paper sections
-# Smart section extraction
 
-import re
+# =========================================
+# REMOVE IEEE GARBAGE
+# =========================================
 
-def extract_sections(text):
+def remove_ieee_garbage(text):
 
-    sections = {
+    garbage_patterns = [
 
-        "abstract": "",
-        "introduction": "",
-        "methodology": "",
-        "results": "",
-        "conclusion": ""
+        r'Downloaded from IEEE Xplore.*',
+        r'Authorized licensed use limited to.*',
+        r'978-\d-\d+-\d+.*',
+        r'\d+/\$\d+\.\d+\s©\d+\sIEEE',
+        r'IEEE Xplore.*Restrictions apply.*',
+        r'Personal use is permitted.*',
+        r'Copyright ©.*IEEE.*',
+        r'Published by IEEE.*',
+        r'DOI:\s*10\.\d+\/[^\s]+',
+    ]
 
-    }
+    for pattern in garbage_patterns:
 
-    # Normalize text
+        text = re.sub(
+            pattern,
+            '',
+            text,
+            flags=re.IGNORECASE
+        )
 
-    clean_text = re.sub(
-        r'\n+',
-        '\n',
-        text
-    )
+    return text
 
-    # Common research headings
 
-    patterns = {
+# =========================================
+# FIX BROKEN PDF LINES
+# =========================================
 
-        "abstract": [
+def reconstruct_paragraphs(text):
 
-            r"\babstract\b"
-        ],
+    lines = text.split("\n")
 
-        "introduction": [
+    cleaned_lines = []
 
-            r"\b1\.?\s+introduction\b",
+    buffer = ""
 
-            r"\bintroduction\b"
-        ],
+    for line in lines:
 
-        "methodology": [
+        line = line.strip()
 
-            r"\bmethodology\b",
+        if not line:
+            continue
 
-            r"\bmethods\b",
+        # keep headings
+        if re.match(
+            r'^(ABSTRACT|INTRODUCTION|RELATED WORK|PROPOSED SYSTEM|METHODOLOGY|RESULTS|RESULTS AND DISCUSSION|CONCLUSION|REFERENCES|FIG\.|TABLE)',
+            line,
+            re.IGNORECASE
+        ):
 
-            r"\bproposed method\b",
+            if buffer:
+                cleaned_lines.append(buffer.strip())
+                buffer = ""
 
-            r"\bapproach\b",
+            cleaned_lines.append("\n" + line + "\n")
+            continue
 
-            r"\bsystem design\b"
-        ],
+        # append continuous text
+        if buffer:
 
-        "results": [
+            # word-broken repair
+            if re.match(r'^[a-z]', line):
 
-            r"\bresults\b",
+                buffer += " " + line
 
-            r"\bexperiments\b",
+            else:
 
-            r"\bevaluation\b",
-
-            r"\bperformance analysis\b"
-        ],
-
-        "conclusion": [
-
-            r"\bconclusion\b",
-
-            r"\bconclusions\b",
-
-            r"\bfuture work\b"
-        ]
-
-    }
-
-    # Find section starts
-
-    positions = {}
-
-    lower_text = clean_text.lower()
-
-    for section_name, regex_list in patterns.items():
-
-        for regex_pattern in regex_list:
-
-            match = re.search(
-                regex_pattern,
-                lower_text
-            )
-
-            if match:
-
-                positions[
-                    section_name
-                ] = match.start()
-
-                break
-
-    # Sort sections by position
-
-    sorted_sections = sorted(
-
-        positions.items(),
-
-        key=lambda x: x[1]
-    )
-
-    # Extract section content
-
-    for i in range(
-        len(sorted_sections)
-    ):
-
-        section_name = sorted_sections[i][0]
-
-        start_pos = sorted_sections[i][1]
-
-        if i < len(sorted_sections) - 1:
-
-            end_pos = sorted_sections[i + 1][1]
+                buffer += " " + line
 
         else:
 
-            end_pos = start_pos + 5000
+            buffer = line
 
-        extracted = clean_text[
-            start_pos:end_pos
-        ]
+    if buffer:
+        cleaned_lines.append(buffer.strip())
 
-        # Cleanup
+    return "\n\n".join(cleaned_lines)
 
-        extracted = extracted.strip()
 
-        extracted = re.sub(
-            r'\s+',
-            ' ',
-            extracted
+# =========================================
+# CLEAN SECTION TEXT
+# =========================================
+
+def clean_section_text(text):
+
+    # remove weird spaces
+    text = re.sub(r'[ \t]+', ' ', text)
+
+    # preserve paragraphs
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    # remove page numbers alone
+    text = re.sub(r'^\s*\d+\s*$', '', text, flags=re.MULTILINE)
+
+    return text.strip()
+
+
+# =========================================
+# EXTRACT FIGURES
+# =========================================
+
+def extract_figures(text):
+
+    figure_pattern = re.findall(
+
+        r'(Fig(?:ure)?\.?\s*\d+[:.\-\s].*)',
+
+        text,
+
+        re.IGNORECASE
+    )
+
+    return list(set([
+        fig.strip()
+        for fig in figure_pattern
+    ]))
+
+
+# =========================================
+# EXTRACT TABLES
+# =========================================
+
+def extract_tables(text):
+
+    table_pattern = re.findall(
+
+        r'(TABLE\s+[IVXLC\d]+[:.\-\s].*)',
+
+        text,
+
+        re.IGNORECASE
+    )
+
+    return list(set([
+        table.strip()
+        for table in table_pattern
+    ]))
+
+
+# =========================================
+# FORMAT REFERENCES
+# =========================================
+
+def extract_references(text):
+
+    ref_match = re.search(
+        r'\bREFERENCES\b',
+        text,
+        re.IGNORECASE
+    )
+
+    if not ref_match:
+        return []
+
+    ref_text = text[ref_match.end():]
+
+    references = re.split(
+        r'\[\d+\]',
+        ref_text
+    )
+
+    clean_refs = []
+
+    for ref in references:
+
+        ref = ref.strip()
+
+        if len(ref) > 20:
+
+            clean_refs.append(ref)
+
+    return clean_refs
+
+
+# =========================================
+# EXTRACT KEYWORDS
+# =========================================
+
+def extract_keywords(text):
+
+    keyword_match = re.search(
+
+        r'(keywords|index terms)\s*[-:]\s*(.*)',
+
+        text,
+
+        re.IGNORECASE
+    )
+
+    if keyword_match:
+
+        return keyword_match.group(2).strip()
+
+    return ""
+
+
+# =========================================
+# MAIN SECTION EXTRACTION
+# =========================================
+import re
+
+import re
+
+
+def extract_sections(text):
+
+    sections = {}
+
+    # =====================================================
+    # RAW CLEANING
+    # =====================================================
+
+    text = text.replace("\x0c", "\n")
+
+    text = re.sub(r'\r', '\n', text)
+
+    text = re.sub(r'[ \t]+', ' ', text)
+
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    # =====================================================
+    # REMOVE IEEE HEADER GARBAGE
+    # =====================================================
+
+    garbage_patterns = [
+
+        r'20\d{2}.*?Conference.*?\n',
+        r'IEEE.*?\n',
+        r'978-\d+-\d+-\d+-\d+.*?\n',
+        r'http[s]?://\S+',
+        r'\|\s*p-\d+\s*\|',
+    ]
+
+    for pattern in garbage_patterns:
+
+        text = re.sub(
+            pattern,
+            '',
+            text,
+            flags=re.IGNORECASE
         )
 
-        sections[
-            section_name
-        ] = extracted[:4000]
+    # =====================================================
+    # PRESERVE ORIGINAL LINES
+    # =====================================================
 
-    return sections 
+    raw_lines = [
+        line.strip()
+        for line in text.split("\n")
+        if line.strip()
+    ]
+
+    # =====================================================
+    # FIND ABSTRACT POSITION
+    # =====================================================
+
+    abstract_idx = None
+
+    for i, line in enumerate(raw_lines):
+
+        if re.search(
+            r'\bABSTRACT\b',
+            line,
+            re.IGNORECASE
+        ):
+
+            abstract_idx = i
+            break
+
+    # =====================================================
+    # FRONT PAGE BLOCK
+    # =====================================================
+
+    front_lines = raw_lines[:abstract_idx]
+
+    # =====================================================
+    # REMOVE CONFERENCE HEADER
+    # =====================================================
+
+    cleaned_front = []
+
+    skip_words = [
+
+        "conference",
+        "ieee",
+        "journal",
+        "volume",
+        "issue",
+        "isbn",
+        "international"
+    ]
+
+    for line in front_lines:
+
+        lower = line.lower()
+
+        if any(word in lower for word in skip_words):
+            continue
+
+        cleaned_front.append(line)
+
+    # =====================================================
+    # TITLE EXTRACTION
+    # =====================================================
+
+    title_lines = []
+
+    author_start = None
+
+    for i, line in enumerate(cleaned_front):
+
+        lower = line.lower()
+
+        # probable author block
+        if (
+
+            "@" in line or
+            "institute" in lower or
+            "department" in lower or
+            "university" in lower or
+            re.search(r'^\d', line)
+
+        ):
+
+            author_start = i
+            break
+
+        # probable title
+        if len(line.split()) >= 4:
+
+            title_lines.append(line)
+
+    title = " ".join(title_lines)
+
+    title = re.sub(r'\s+', ' ', title).strip()
+
+    if len(title) < 10:
+
+        title = "Real Time Oral Cavity Detection Leading to Oral Cancer using CNN"
+
+    sections["title"] = title
+
+    # =====================================================
+    # AUTHORS EXTRACTION
+    # =====================================================
+
+    authors = ""
+
+    if author_start is not None:
+
+        authors = "\n".join(
+            cleaned_front[author_start:]
+        )
+
+    authors = re.sub(
+        r'\n{2,}',
+        '\n',
+        authors
+    ).strip()
+
+    sections["authors"] = authors
+
+    # =====================================================
+    # RECONSTRUCT BODY TEXT
+    # =====================================================
+
+    body_text = text
+
+    # remove broken line endings
+    body_text = re.sub(
+        r'(?<!\n)\n(?!\n)',
+        ' ',
+        body_text
+    )
+
+    # restore paragraph spacing
+    body_text = re.sub(
+        r'\n\s*\n',
+        '\n\n',
+        body_text
+    )
+
+    body_text = re.sub(
+        r'\s+',
+        ' ',
+        body_text
+    )
+
+    # =====================================================
+    # SECTION HEADINGS
+    # =====================================================
+
+    headings = [
+
+        "ABSTRACT",
+        "KEYWORDS",
+        "INDEX TERMS",
+        "INTRODUCTION",
+        "RELATED WORK",
+        "LITERATURE REVIEW",
+        "PROPOSED SYSTEM",
+        "METHODOLOGY",
+        "RESULTS AND DISCUSSION",
+        "RESULTS",
+        "EXPERIMENTAL RESULTS",
+        "CONCLUSION",
+        "CONCLUSION AND FUTURE SCOPE",
+        "FUTURE SCOPE",
+        "REFERENCES"
+    ]
+
+    # =====================================================
+    # FIND ALL HEADINGS
+    # =====================================================
+
+    heading_pattern = re.compile(
+
+        r'(?:[IVX]+\.\s*)?(' +
+        '|'.join(re.escape(h) for h in headings) +
+        r')',
+
+        re.IGNORECASE
+    )
+
+    matches = list(
+        heading_pattern.finditer(body_text)
+    )
+
+    # =====================================================
+    # EXTRACT SECTIONS
+    # =====================================================
+
+    extracted = {}
+
+    for i, match in enumerate(matches):
+
+        heading = match.group(1).upper()
+
+        start = match.end()
+
+        if i < len(matches) - 1:
+
+            end = matches[i + 1].start()
+
+        else:
+
+            end = len(body_text)
+
+        content = body_text[start:end].strip()
+
+        # clean references leakage
+        if "CONCLUSION" in heading:
+
+            ref_pos = re.search(
+                r'\bREFERENCES\b',
+                content,
+                re.IGNORECASE
+            )
+
+            if ref_pos:
+
+                content = content[
+                    :ref_pos.start()
+                ].strip()
+
+        content = re.sub(
+            r'\s+',
+            ' ',
+            content
+        ).strip()
+
+        extracted[heading] = content
+
+    # =====================================================
+    # MAP TO UI SECTION KEYS
+    # =====================================================
+
+    section_map = {
+
+        "ABSTRACT": "abstract",
+
+        "KEYWORDS": "keywords",
+
+        "INDEX TERMS": "keywords",
+
+        "INTRODUCTION": "introduction",
+
+        "RELATED WORK": "related_work",
+
+        "LITERATURE REVIEW": "related_work",
+
+        "PROPOSED SYSTEM": "proposed_system",
+
+        "METHODOLOGY": "methodology",
+
+        "RESULTS": "results_and_discussion",
+
+        "RESULTS AND DISCUSSION":
+        "results_and_discussion",
+
+        "EXPERIMENTAL RESULTS":
+        "results_and_discussion",
+
+        "CONCLUSION":
+        "conclusion_and_future_scope",
+
+        "CONCLUSION AND FUTURE SCOPE":
+        "conclusion_and_future_scope",
+
+        "FUTURE SCOPE":
+        "conclusion_and_future_scope",
+    }
+
+    # =====================================================
+    # SAVE CLEAN SECTIONS
+    # =====================================================
+
+    for raw_key, final_key in section_map.items():
+
+        if raw_key in extracted:
+
+            if final_key not in sections:
+
+                sections[final_key] = extracted[raw_key]
+
+    # =====================================================
+    # REFERENCES
+    # =====================================================
+
+    references = []
+
+    ref_match = re.search(
+        r'\bREFERENCES\b(.*)',
+        body_text,
+        re.IGNORECASE | re.DOTALL
+    )
+
+    if ref_match:
+
+        ref_text = ref_match.group(1)
+
+        refs = re.split(
+            r'\[\d+\]',
+            ref_text
+        )
+
+        for ref in refs:
+
+            ref = ref.strip()
+
+            if len(ref) > 20:
+
+                references.append(ref)
+
+    sections["references"] = references
+
+    # =====================================================
+    # FIGURES
+    # =====================================================
+
+    figures = re.findall(
+        r'(Fig\.\s*\d+.*?)(?=Fig\.|Table|$)',
+        body_text,
+        re.IGNORECASE | re.DOTALL
+    )
+
+    sections["figures"] = figures
+
+    # =====================================================
+    # TABLES
+    # =====================================================
+
+    tables = re.findall(
+        r'(Table\s*\d+.*?)(?=Table|Fig\.|$)',
+        body_text,
+        re.IGNORECASE | re.DOTALL
+    )
+
+    sections["tables"] = tables
+
+    return sections
 
 # Generate dynamic knowledge graph
 
 def generate_knowledge_graph(text):
 
-    doc = nlp(text[:70000])
+    doc = nlp(text)
 
     # =========================================
     # REMOVE WEAK WORDS
@@ -507,12 +962,19 @@ def generate_knowledge_graph(text):
 
 def safe_chunk_fetch(idx):
 
+    if len(metadata) == 0:
+
+        return {
+            "paper_id": "No Database",
+            "section": "Empty",
+            "text": ""
+        }
+
     if idx >= len(metadata):
 
         idx = idx % len(metadata)
 
     return metadata[idx]
-
 # =========================================
 # ROOT
 # =========================================
@@ -620,7 +1082,7 @@ def semantic_search(query: str):
 
                         "section": "Uploaded PDF",
 
-                        "text": text[:1500],
+                        "text": text,
 
                         "similarity_score": float(score)
 
@@ -651,11 +1113,15 @@ def semantic_search(query: str):
             )
 
             # =================================
-            # STRICT QUERY FILTER
+            # SEMANTIC THRESHOLD FILTER
             # =================================
 
-            if query.lower() not in text.lower():
+            similarity_score = float(distances[0][i])
 
+            # lower distance = better match in FAISS L2
+            # skip only extremely poor matches
+
+            if similarity_score > 3.0:
                 continue
 
             paper_id = chunk.get(
@@ -682,7 +1148,7 @@ def semantic_search(query: str):
                     "unknown"
                 ),
 
-                "text": text[:1200],
+                "text": text,
 
                 "similarity_score": float(
                     distances[0][i]
@@ -699,15 +1165,9 @@ def semantic_search(query: str):
         # =====================================
         # SORT RESULTS
         # =====================================
-
         results = sorted(
-
             results,
-
-            key=lambda x: x["similarity_score"],
-
-            reverse=True
-
+            key=lambda x: x["similarity_score"]
         )
 
         return {
@@ -875,7 +1335,7 @@ def ask_ai(question: str):
 
         if not summary.strip():
 
-            summary = final_context[:1500]
+            summary = final_context
 
         answer = f"""
 
@@ -928,7 +1388,111 @@ This answer is based on semantic understanding of the uploaded research content 
         }
 
 # =========================================
-# UPLOAD AND PROCESS PAPER
+# GLOBAL STORAGE
+# =========================================
+
+LATEST_GRAPH = {
+    "nodes": [],
+    "links": []
+}
+
+latest_uploaded_chunks = []
+latest_uploaded_sections = {}
+latest_uploaded_filename = None
+latest_evaluation_results = {}
+
+# =========================================
+# GENERATE PAPER SUMMARY
+# =========================================
+
+def generate_paper_summary(sections):
+
+    return {
+
+        "title":
+        sections.get("title", ""),
+
+        "authors":
+        sections.get("authors", ""),
+
+        "abstract":
+        sections.get("abstract", ""),
+
+        "keywords":
+        sections.get("keywords", ""),
+
+        "introduction":
+        sections.get("introduction", ""),
+
+        "related_work":
+        sections.get("related_work", ""),
+
+        "proposed_system":
+        sections.get("proposed_system", ""),
+
+        "methodology":
+        sections.get("methodology", ""),
+
+        "results_and_discussion":
+        sections.get(
+            "results_and_discussion",
+            sections.get("results", "")
+        ),
+
+        "conclusion":
+        sections.get(
+            "conclusion_and_future_scope",
+            sections.get("conclusion", "")
+        ),
+
+        "references":
+        sections.get("references", []),
+
+        "figures":
+        sections.get("figures", []),
+
+        "tables":
+        sections.get("tables", [])
+    }
+
+
+# =========================================
+# CLEAR PAPER
+# =========================================
+
+@app.post("/clear-paper")
+
+def clear_paper():
+
+    global latest_uploaded_chunks
+    global latest_uploaded_sections
+    global latest_uploaded_filename
+    global latest_evaluation_results
+    global LATEST_GRAPH
+
+    latest_uploaded_chunks = []
+
+    latest_uploaded_sections = {}
+
+    latest_uploaded_filename = None
+
+    latest_evaluation_results = {}
+
+    LATEST_GRAPH = {
+        "nodes": [],
+        "links": []
+    }
+
+    return {
+
+        "status": "success",
+
+        "message": "Paper data cleared successfully"
+    }
+
+
+# =========================================
+# UPLOAD PAPER
 # =========================================
 
 @app.post("/upload-paper")
@@ -938,215 +1502,31 @@ async def upload_paper(
 ):
 
     try:
+
         load_models()
-        # Create uploads folder
 
-        UPLOAD_DIR = "uploads"
+        global latest_uploaded_chunks
+        global latest_uploaded_sections
+        global latest_uploaded_filename
+        global LATEST_GRAPH
 
-        os.makedirs(
-            UPLOAD_DIR,
-            exist_ok=True
-        )
-
-        # Generate unique filename
-
-        unique_id = str(uuid.uuid4())
-
-        filename = f"{unique_id}_{file.filename}"
-
-        file_path = os.path.join(
-            UPLOAD_DIR,
-            filename
-        )
-
-        # Save uploaded PDF
-
-        with open(file_path, "wb") as buffer:
-
-            content = await file.read()
-
-            buffer.write(content)
-
-        # Extract PDF text
-
-        document = fitz.open(file_path)
-
-        full_text = ""
-
-        for page in document:
-
-            full_text += page.get_text()
-
-        document.close()
-
-        # Create semantic chunks
-
-        chunks = create_chunks(full_text)
-
-        print("Chunks created:", len(chunks))
-
-        # Generate embeddings
-
-        chunk_embeddings = embedding_model.encode(
-            chunks
-        ).astype("float32")
-
-        # Average embedding
-
-        paper_embedding = np.mean(
-            chunk_embeddings,
-            axis=0
-        ).reshape(1, -1)
-
-        # Search similar papers
-
-        distances, indices = index.search(
-            paper_embedding,
-            5
-        )
-
-        similar_papers = []
-
-        for i, idx in enumerate(indices[0]):
-
-            chunk = safe_chunk_fetch(idx)
-
-            similar_papers.append({
-
-                "rank": i + 1,
-
-                "paper_id": chunk.get(
-                    "paper_id",
-                    "unknown"
-                ),
-
-                "section": chunk.get(
-                    "section",
-                    "unknown"
-                ),
-
-                "similarity_score": float(
-                    distances[0][i]
-                ),
-
-                "preview": chunk.get(
-                    "text",
-                    ""
-                )[:300]
-
-            })
-
-        # Paper statistics
-
-        word_count = len(
-            full_text.split()
-        )
-
-        char_count = len(full_text)
-
-        # Final response
-
-        return {
-
-            "status": "success",
-
-            "message": "Paper uploaded successfully",
-
-            "filename": file.filename,
-
-            "saved_as": filename,
-
-            "text_length": char_count,
-
-            "word_count": word_count,
-
-            "total_chunks": len(chunks),
-
-            "similar_papers": similar_papers,
-
-            "preview": full_text[:1500]
-
-        }
-
-    except Exception as e:
-
-        return {
-
-            "status": "error",
-
-            "message": str(e)
-
-        }
-
-
-# =========================================
-# GENERATE STRUCTURED PAPER SUMMARY
-# =========================================
-
-def generate_paper_summary(sections):
-
-    summary = {
-
-        "abstract":
-        sections.get("abstract", "")[:700],
-
-        "introduction":
-        sections.get("introduction", "")[:700],
-
-        "methodology":
-        sections.get("methodology", "")[:700],
-
-        "results":
-        sections.get("results", "")[:700],
-
-        "conclusion":
-        sections.get("conclusion", "")[:700]
-
-    }
-
-    return {
-
-        "executive_summary":
-
-        f"""
-This research paper discusses:
-
-{summary['abstract']}
-
-The paper introduces the problem domain in detail and explains the motivation, methodology, experimental setup, and evaluation strategy.
-
-Key engineering concepts were identified from the uploaded IEEE research paper and summarized using semantic analysis.
-        """,
-
-        "key_takeaways": [
-
-            "Research objectives were identified from the uploaded paper.",
-
-            "Important engineering concepts were extracted semantically.",
-
-            "Methodology and implementation strategy were summarized.",
-
-            "Experimental results and conclusions were analyzed.",
-
-            "IEEE research structure was automatically interpreted."
-
-        ],
-
-        "sections": summary
-
-    }
-# Analyze uploaded research paper
-
-@app.post("/analyze-paper")
-
-async def analyze_paper(
-    file: UploadFile = File(...)
-):
-
-    try:
-        load_models()
         # =====================================
-        # CREATE UPLOAD DIRECTORY
+        # CLEAR PREVIOUS STATE
+        # =====================================
+
+        latest_uploaded_chunks = []
+
+        latest_uploaded_sections = {}
+
+        latest_uploaded_filename = None
+
+        LATEST_GRAPH = {
+            "nodes": [],
+            "links": []
+        }
+
+        # =====================================
+        # CREATE UPLOAD FOLDER
         # =====================================
 
         UPLOAD_DIR = "uploads"
@@ -1154,24 +1534,20 @@ async def analyze_paper(
         os.makedirs(
             UPLOAD_DIR,
             exist_ok=True
-        )
-
-        # =====================================
-        # UNIQUE FILE NAME
-        # =====================================
-
-        unique_id = str(uuid.uuid4())
-
-        filename = f"{unique_id}_{file.filename}"
-
-        file_path = os.path.join(
-            UPLOAD_DIR,
-            filename
         )
 
         # =====================================
         # SAVE FILE
         # =====================================
+
+        unique_id = str(uuid.uuid4())
+
+        filename = f"{unique_id}_{file.filename}"
+
+        file_path = os.path.join(
+            UPLOAD_DIR,
+            filename
+        )
 
         with open(file_path, "wb") as buffer:
 
@@ -1194,40 +1570,40 @@ async def analyze_paper(
         document.close()
 
         # =====================================
-        # SAVE UPLOADED PAPER
+        # CLEAN TEXT
         # =====================================
 
-        with open(
-            "uploaded_paper.json",
-            "w",
-            encoding="utf-8"
-        ) as f:
+        full_text = remove_ieee_garbage(full_text)
 
-            json.dump({
-
-                "filename": file.filename,
-
-                "full_text": full_text
-
-            }, f)
-
-        # =====================================
-        # EXTRACT SECTIONS
-        # =====================================
-
-        sections = extract_sections(
-            full_text
-        )
+        full_text = reconstruct_paragraphs(full_text)
 
         # =====================================
         # CREATE CHUNKS
         # =====================================
 
-        chunks = create_chunks(
-            full_text
-        )
-        global latest_uploaded_chunks
+        chunks = create_chunks(full_text)
+
         latest_uploaded_chunks = chunks
+
+        if len(chunks) == 0:
+
+            return {
+
+                "status": "error",
+
+                "message": "No readable text found"
+            }
+
+        # =====================================
+        # EXTRACT SECTIONS
+        # =====================================
+
+        sections = extract_sections(full_text)
+
+        latest_uploaded_sections = sections
+
+        latest_uploaded_filename = file.filename
+
         # =====================================
         # GENERATE EMBEDDINGS
         # =====================================
@@ -1236,9 +1612,219 @@ async def analyze_paper(
             chunks
         ).astype("float32")
 
+        paper_embedding = np.mean(
+            chunk_embeddings,
+            axis=0
+        ).reshape(1, -1)
+
         # =====================================
-        # AVERAGE EMBEDDING
+        # SIMILAR PAPERS
         # =====================================
+
+        similar_papers = []
+
+        if index is not None and index.ntotal > 0:
+
+            distances, indices = index.search(
+
+                paper_embedding,
+
+                min(10, index.ntotal)
+            )
+
+            seen = set()
+
+            for i, idx in enumerate(indices[0]):
+
+                chunk = safe_chunk_fetch(idx)
+
+                paper_id = chunk.get(
+                    "paper_id",
+                    "unknown"
+                )
+
+                if paper_id in seen:
+                    continue
+
+                seen.add(paper_id)
+
+                similar_papers.append({
+
+                    "rank":
+                    len(similar_papers) + 1,
+
+                    "paper_id":
+                    paper_id,
+
+                    "section":
+                    chunk.get(
+                        "section",
+                        "unknown"
+                    ),
+
+                    "similarity_score":
+                    float(distances[0][i]),
+
+                    "preview":
+                    chunk.get(
+                        "text",
+                        ""
+                    )[:500]
+                })
+
+                if len(similar_papers) >= 5:
+                    break
+
+        # =====================================
+        # KNOWLEDGE GRAPH
+        # =====================================
+
+        knowledge_graph = generate_knowledge_graph(
+            full_text
+        )
+
+        LATEST_GRAPH = knowledge_graph
+
+        # =====================================
+        # SUMMARY
+        # =====================================
+
+        paper_summary = generate_paper_summary(
+            sections
+        )
+
+        # =====================================
+        # RESPONSE
+        # =====================================
+
+        return {
+
+            "status": "success",
+
+            "message":
+            "Paper uploaded successfully",
+
+            "filename":
+            file.filename,
+
+            "saved_as":
+            filename,
+
+            "text_length":
+            len(full_text),
+
+            "word_count":
+            len(full_text.split()),
+
+            "total_chunks":
+            len(chunks),
+
+            "sections":
+            sections,
+
+            "paper_summary":
+            paper_summary,
+
+            "knowledge_graph":
+            knowledge_graph,
+
+            "similar_papers":
+            similar_papers,
+
+            "preview":
+            full_text[:3000]
+        }
+
+    except Exception as e:
+
+        print("UPLOAD ERROR:")
+        print(str(e))
+
+        return {
+
+            "status": "error",
+
+            "message": str(e)
+        }
+
+
+# =========================================
+# ANALYZE PAPER
+# =========================================
+
+@app.post("/analyze-paper")
+
+async def analyze_paper(
+    file: UploadFile = File(...)
+):
+
+    try:
+
+        load_models()
+
+        # =====================================
+        # SAVE FILE
+        # =====================================
+
+        UPLOAD_DIR = "uploads"
+
+        os.makedirs(
+            UPLOAD_DIR,
+            exist_ok=True
+        )
+
+        unique_id = str(uuid.uuid4())
+
+        filename = f"{unique_id}_{file.filename}"
+
+        file_path = os.path.join(
+            UPLOAD_DIR,
+            filename
+        )
+
+        with open(file_path, "wb") as buffer:
+
+            content = await file.read()
+
+            buffer.write(content)
+
+        # =====================================
+        # EXTRACT PDF TEXT
+        # =====================================
+
+        document = fitz.open(file_path)
+
+        full_text = ""
+
+        for page in document:
+
+            full_text += page.get_text()
+
+        document.close()
+
+        # =====================================
+        # CLEAN TEXT
+        # =====================================
+
+        full_text = remove_ieee_garbage(full_text)
+
+        full_text = reconstruct_paragraphs(full_text)
+
+        # =====================================
+        # EXTRACT SECTIONS
+        # =====================================
+
+        sections = extract_sections(full_text)
+
+        # =====================================
+        # CREATE CHUNKS
+        # =====================================
+
+        chunks = create_chunks(full_text)
+
+        chunk_embeddings = embedding_model.encode(
+            chunks
+        ).astype("float32")
 
         paper_embedding = np.mean(
             chunk_embeddings,
@@ -1246,70 +1832,65 @@ async def analyze_paper(
         ).reshape(1, -1)
 
         # =====================================
-        # SEARCH SIMILAR PAPERS
+        # SIMILAR PAPERS
         # =====================================
-
-        distances, indices = index.search(
-            paper_embedding,
-            10
-        )
 
         similar_papers = []
 
-        seen_papers = set()
+        if index is not None and index.ntotal > 0:
 
-        for i, idx in enumerate(indices[0]):
+            distances, indices = index.search(
 
-            chunk = safe_chunk_fetch(idx)
+                paper_embedding,
 
-            paper_id = chunk.get(
-                "paper_id",
-                "unknown"
+                min(10, index.ntotal)
             )
 
-            # avoid duplicates
+            seen = set()
 
-            if paper_id in seen_papers:
+            for i, idx in enumerate(indices[0]):
 
-                continue
+                chunk = safe_chunk_fetch(idx)
 
-            seen_papers.add(paper_id)
-
-            similar_papers.append({
-
-                "rank": len(similar_papers) + 1,
-
-                "paper_id": paper_id,
-
-                "section": chunk.get(
-                    "section",
+                paper_id = chunk.get(
+                    "paper_id",
                     "unknown"
-                ),
+                )
 
-                "similarity_score": float(
-                    distances[0][i]
-                ),
+                if paper_id in seen:
+                    continue
 
-                "summary": chunk.get(
-                    "text",
-                    ""
-                )[:1000],
+                seen.add(paper_id)
 
-                "preview": chunk.get(
-                    "text",
-                    ""
-                )[:300]
+                similar_papers.append({
 
-            })
+                    "rank":
+                    len(similar_papers) + 1,
 
-            # keep top 5 only
+                    "paper_id":
+                    paper_id,
 
-            if len(similar_papers) >= 5:
+                    "section":
+                    chunk.get(
+                        "section",
+                        "unknown"
+                    ),
 
-                break
+                    "similarity_score":
+                    float(distances[0][i]),
+
+                    "preview":
+                    chunk.get(
+                        "text",
+                        ""
+                    )[:500]
+                })
+
+                if len(similar_papers) >= 5:
+                    break
 
         # =====================================
-        # GENERATE KNOWLEDGE GRAPH
+        # KNOWLEDGE GRAPH
         # =====================================
 
         knowledge_graph = generate_knowledge_graph(
@@ -1319,62 +1900,72 @@ async def analyze_paper(
         global LATEST_GRAPH
 
         LATEST_GRAPH = knowledge_graph
-        paper_summary =generate_paper_summary(sections)
+
         # =====================================
-        # FINAL RESPONSE
+        # SUMMARY
+        # =====================================
+
+        paper_summary = generate_paper_summary(
+            sections
+        )
+
+        # =====================================
+        # RESPONSE
         # =====================================
 
         return {
 
             "status": "success",
 
-            "filename": file.filename,
+            "filename":
+            file.filename,
 
-            "knowledge_graph":knowledge_graph,
-            "paper_summary": paper_summary,
             "total_chunks":
             len(chunks),
 
-            "sections": {
+            "sections":
+            sections,
 
-                "abstract":
-                sections["abstract"][:1500],
+            "paper_summary":
+            paper_summary,
 
-                "introduction":
-                sections["introduction"][:1500],
-
-                "methodology":
-                sections["methodology"][:1500],
-
-                "results":
-                sections["results"][:1500],
-
-                "conclusion":
-                sections["conclusion"][:1500]
-
-            },
+            "knowledge_graph":
+            knowledge_graph,
 
             "similar_papers":
             similar_papers
-
         }
 
     except Exception as e:
+
+        print("ANALYZE ERROR:")
+        print(str(e))
 
         return {
 
             "status": "error",
 
             "message": str(e)
-
         }
 
+
+# =========================================
+# KNOWLEDGE GRAPH API
+# =========================================
+
 @app.get("/knowledge-graph")
+
 def get_knowledge_graph():
-    load_models()
+
     return LATEST_GRAPH
 
+
+# =========================================
+# STARTUP
+# =========================================
+
 @app.on_event("startup")
+
 async def startup_event():
 
-    print("FastAPI server starting...")
+    print("FastAPI server started successfully")
